@@ -18,7 +18,21 @@
 #include "WProgram.h"
 #endif
 
+//--------------------------------------------------------------------------------------
+// Constructor. Set the pinReader to the default pin reader method
+//----------------------------------------------- ---------------------------------------
+EnergyMonitor::EnergyMonitor()
+{
+  this->inputPinReader = defaultInputPinReader;
+}
 
+//--------------------------------------------------------------------------------------
+// By default we just call Arduino's analogRead
+//--------------------------------------------------------------------------------------
+int EnergyMonitor::defaultInputPinReader(int _pin)
+{
+  return analogRead(_pin);
+}
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors
 //--------------------------------------------------------------------------------------
@@ -106,9 +120,9 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
     //-----------------------------------------------------------------------------
-    offsetV = offsetV + ((sampleV-offsetV)/1024);
+    offsetV = offsetV + ((sampleV-offsetV)/ADC_COUNTS);
     filteredV = sampleV - offsetV;
-    offsetI = offsetI + ((sampleI-offsetI)/1024);
+    offsetI = offsetI + ((sampleI-offsetI)/ADC_COUNTS);
     filteredI = sampleI - offsetI;
 
     //-----------------------------------------------------------------------------
@@ -188,7 +202,7 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
 
     // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset,
     //  then subtract this - signal is now centered on 0 counts.
-    offsetI = (offsetI + (sampleI-offsetI)/1024);
+    offsetI = (offsetI + (sampleI-offsetI)/ADC_COUNTS);
     filteredI = sampleI - offsetI;
 
     // Root-mean-square method current
