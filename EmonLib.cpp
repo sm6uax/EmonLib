@@ -17,7 +17,7 @@
 #else
 #include "WProgram.h"
 #endif
-
+static const char TAG[] = __FILE__;
 //--------------------------------------------------------------------------------------
 // Constructor. Set the pinReader to the default pin reader method
 //----------------------------------------------- ---------------------------------------
@@ -36,39 +36,42 @@ int EnergyMonitor::defaultInputPinReader(int _pin)
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors
 //--------------------------------------------------------------------------------------
-void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL)
+void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL,unsigned int _offset)
 {
   inPinV = _inPinV;
   VCAL = _VCAL;
   PHASECAL = _PHASECAL;
-  offsetV = ADC_COUNTS>>1;
+  offsetV = _offset;//ADC_COUNTS>>1;
+  OFFSET = _offset;
 }
 
-void EnergyMonitor::current(unsigned int _inPinI, double _ICAL)
+void EnergyMonitor::current(unsigned int _inPinI, double _ICAL,unsigned int _offset)
 {
   inPinI = _inPinI;
   ICAL = _ICAL;
-  offsetI = ADC_COUNTS>>1;
+  offsetI = _offset/2;//ADC_COUNTS>>1;
+  ESP_LOGI(TAG,"OFFSET %i",_offset);
+  OFFSET = _offset;
 }
 
 //--------------------------------------------------------------------------------------
 // Sets the pins to be used for voltage and current sensors based on emontx pin map
 //--------------------------------------------------------------------------------------
-void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL)
+void EnergyMonitor::voltageTX(double _VCAL, double _PHASECAL,unsigned int _offset)
 {
   inPinV = 2;
   VCAL = _VCAL;
   PHASECAL = _PHASECAL;
-  offsetV = ADC_COUNTS>>1;
+  offsetV = (double)_offset/2;//ADC_COUNTS>>1;
 }
 
-void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL)
+void EnergyMonitor::currentTX(unsigned int _channel, double _ICAL,unsigned int _offset)
 {
   if (_channel == 1) inPinI = 3;
   if (_channel == 2) inPinI = 0;
   if (_channel == 3) inPinI = 1;
   ICAL = _ICAL;
-  offsetI = ADC_COUNTS>>1;
+  offsetI = (double)_offset/2;//ADC_COUNTS>>1;
 }
 
 //--------------------------------------------------------------------------------------
@@ -96,7 +99,7 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   while(1)                                   //the while loop...
   {
     startV = (this->inputPinReader)(inPinV); //analogRead(inPinV);                    //using the voltage waveform
-    if ((startV < (ADC_COUNTS*0.55)) && (startV > (ADC_COUNTS*0.45))) break;  //check its within range
+    if ((startV < (OFFSET/*ADC_COUNTS*/*0.55)) && (startV > (OFFSET/*ADC_COUNTS*/*0.45))) break;  //check its within range
     if ((millis()-start)>timeout) break;
   }
 
@@ -120,9 +123,9 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
     //-----------------------------------------------------------------------------
-    offsetV = offsetV + ((sampleV-offsetV)/ADC_COUNTS);
+    offsetV = offsetV + ((sampleV-offsetV)/OFFSET/*ADC_COUNTS*/);
     filteredV = sampleV - offsetV;
-    offsetI = offsetI + ((sampleI-offsetI)/ADC_COUNTS);
+    offsetI = offsetI + ((sampleI-offsetI)/OFFSET/*ADC_COUNTS*/);
     filteredI = sampleI - offsetI;
 
     //-----------------------------------------------------------------------------
@@ -167,10 +170,10 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   //Calculation of the root of the mean of the voltage and current squared (rms)
   //Calibration coefficients applied.
 
-  double V_RATIO = VCAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
+  double V_RATIO = VCAL *((SupplyVoltage/1000.0) / (OFFSET/*ADC_COUNTS*/));
   Vrms = V_RATIO * sqrt(sumV / numberOfSamples);
 
-  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
+  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (OFFSET/*ADC_COUNTS*/));
   Irms = I_RATIO * sqrt(sumI / numberOfSamples);
 
   //Calculation power values
@@ -189,20 +192,28 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
 {
 
+  uint start = millis();
   #if defined emonTxV3
     int SupplyVoltage=3300;
   #else
     int SupplyVoltage = readVcc();
   #endif
-
-
+#ifdef ARDUINO_Dalsen04_102
+  uint16_t x = (this->inputPinReader)(inPinI);
+  //(this->inputPinReader)(inPinI);
+#endif
   for (unsigned int n = 0; n < Number_of_Samples; n++)
   {
+#ifndef ARDUINO_Dalsen04_102
     sampleI = (this->inputPinReader)(inPinI);//analogRead(inPinI);
-
+#endif
+#ifdef ARDUINO_Dalsen04_102
+    sampleI = this->inputADS1115continues();//analogRead(inPinI);
+    //ESP_LOGI(TAG,"%i",sampleI);
+#endif
     // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset,
     //  then subtract this - signal is now centered on 0 counts.
-    offsetI = (offsetI + (sampleI-offsetI)/ADC_COUNTS);
+    offsetI = (offsetI + (sampleI-offsetI)/OFFSET/*ADC_COUNTS*/);
     filteredI = sampleI - offsetI;
 
     // Root-mean-square method current
@@ -210,15 +221,21 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
     sqI = filteredI * filteredI;
     // 2) sum
     sumI += sqI;
+#ifdef ARDUINO_Dalsen04_102
+    delayMicroseconds(500);
+#endif
   }
+  //ESP_LOGI(TAG,"%i",SupplyVoltage);
 
-  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (ADC_COUNTS));
+
+  double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (OFFSET/*ADC_COUNTS*/));
   Irms = I_RATIO * sqrt(sumI / Number_of_Samples);
 
   //Reset accumulators
   sumI = 0;
   //--------------------------------------------------------------------------------------
 
+  uint stop = millis();
   return Irms;
 }
 
