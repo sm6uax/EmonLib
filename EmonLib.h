@@ -33,7 +33,7 @@
 // include the following line in main sketch inside setup() function:
 //  analogReadResolution(ADC_BITS);
 // otherwise will default to 10 bits, as in regular Arduino-based boards.
-#if defined(DAL_ADS1115)
+#ifdef ADS1X15
 #define ADC_BITS    15
 #else
 #define ADC_BITS    12
@@ -49,14 +49,16 @@ class EnergyMonitor
 
     typedef int (*inputPinReaderMethod)(int _pin);
     inputPinReaderMethod inputPinReader;
+#ifdef ADS1115
     typedef int ((*inputPinReaderMethodADS1115)());
     inputPinReaderMethodADS1115 inputADS1115continues;
+#endif
     static int defaultInputPinReader(int _pin);
-    void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL, unsigned int _offset);
-    void current(unsigned int _inPinI, double _ICAL, unsigned int _offset);
+    void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL, unsigned int _offset= ADC_COUNTS);
+    void current(unsigned int _inPinI, double _ICAL, unsigned int _offset= ADC_COUNTS);
 
-    void voltageTX(double _VCAL, double _PHASECAL, unsigned int _offset);
-    void currentTX(unsigned int _channel, double _ICAL, unsigned int _offset);
+    void voltageTX(double _VCAL, double _PHASECAL, unsigned int _offset= ADC_COUNTS);
+    void currentTX(unsigned int _channel, double _ICAL, unsigned int _offset= ADC_COUNTS);
 
     void calcVI(unsigned int crossings, unsigned int timeout);
     double calcIrms(unsigned int NUMBER_OF_SAMPLES);
@@ -80,7 +82,7 @@ class EnergyMonitor
     double VCAL;
     double ICAL;
     double PHASECAL;
-    unsigned int OFFSET = ADC_COUNTS;
+    unsigned int SAMPLEBITS = ADC_COUNTS;
     //--------------------------------------------------------------------------------------
     // Variable declaration for emon_calc procedure
     //--------------------------------------------------------------------------------------
