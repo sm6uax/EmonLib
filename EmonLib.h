@@ -34,7 +34,12 @@
 //  analogReadResolution(ADC_BITS);
 // otherwise will default to 10 bits, as in regular Arduino-based boards.
 #ifdef ADS1X15
+#ifdef ADS1115
 #define ADC_BITS    15
+#endif
+#ifdef ADS1015
+#define ADC_BITS    12
+#endif
 #else
 #define ADC_BITS    12
 #endif
@@ -53,6 +58,10 @@ class EnergyMonitor
     typedef int ((*inputPinReaderMethodADS1115)());
     inputPinReaderMethodADS1115 inputADS1115continues;
 #endif
+#ifdef ADS1015
+    typedef int ((*inputPinReaderMethodADS1015)());
+    inputPinReaderMethodADS1015 inputADS1015continues;
+#endif
     static int defaultInputPinReader(int _pin);
     void voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL, unsigned int _offset= ADC_COUNTS);
     void current(unsigned int _inPinI, double _ICAL, unsigned int _offset= ADC_COUNTS);
@@ -61,6 +70,7 @@ class EnergyMonitor
     void currentTX(unsigned int _channel, double _ICAL, unsigned int _offset= ADC_COUNTS);
 
     void calcVI(unsigned int crossings, unsigned int timeout);
+    double calcVrms(unsigned int crossings, unsigned int timeout);
     double calcIrms(unsigned int NUMBER_OF_SAMPLES);
     void serialprint();
 

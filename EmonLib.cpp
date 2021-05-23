@@ -41,7 +41,7 @@ void EnergyMonitor::voltage(unsigned int _inPinV, double _VCAL, double _PHASECAL
   inPinV = _inPinV;
   VCAL = _VCAL;
   PHASECAL = _PHASECAL;
-  offsetV = _samplebits;
+  offsetV = _samplebits/2;
   SAMPLEBITS = _samplebits;
 }
 
@@ -89,19 +89,19 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 
   unsigned int crossCount = 0;                             //Used to measure number of times threshold is crossed.
   unsigned int numberOfSamples = 0;                        //This is now incremented
-
   //-------------------------------------------------------------------------------------------------------------------------
   // 1) Waits for the waveform to be close to 'zero' (mid-scale adc) part in sin curve.
   //-------------------------------------------------------------------------------------------------------------------------
   unsigned long start = millis();    //millis()-start makes sure it doesnt get stuck in the loop if there is an error.
-
+  int x= (this->inputPinReader)(inPinV);
   while(1)                                   //the while loop...
   {
-    startV = (this->inputPinReader)(inPinV); //analogRead(inPinV);                    //using the voltage waveform
-    if ((startV < (SAMPLEBITS*0.55)) && (startV > (SAMPLEBITS*0.45))) break;  //check its within range
+     //analogRead(inPinV);                    //using the voltage waveform
+    sampleV = this->inputADS1015continues();
+
+    if ((startV < (this->SAMPLEBITS *0.55)) && (startV > (this->SAMPLEBITS*0.45))) break;  //check its within range
     if ((millis()-start)>timeout) break;
   }
-
   //-------------------------------------------------------------------------------------------------------------------------
   // 2) Main measurement loop
   //-------------------------------------------------------------------------------------------------------------------------
@@ -116,8 +116,9 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     // A) Read in raw voltage and current samples
     //-----------------------------------------------------------------------------
     sampleV = (this->inputPinReader)(inPinV); //analogRead(inPinV);                 //Read in raw voltage signal
+    sampleV = this->inputADS1015continues();
     sampleI = (this->inputPinReader)(inPinI); //analogRead(inPinI);                 //Read in raw current signal
-
+    sampleI = this->inputADS1015continues();
     //-----------------------------------------------------------------------------
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
@@ -162,7 +163,6 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 
     if (lastVCross != checkVCross) crossCount++;
   }
-
   //-------------------------------------------------------------------------------------------------------------------------
   // 3) Post loop calculations
   //-------------------------------------------------------------------------------------------------------------------------
@@ -171,7 +171,6 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
 
   double V_RATIO = VCAL *((SupplyVoltage/1000.0) / (SAMPLEBITS));
   Vrms = V_RATIO * sqrt(sumV / numberOfSamples);
-
   double I_RATIO = ICAL *((SupplyVoltage/1000.0) / (SAMPLEBITS));
   Irms = I_RATIO * sqrt(sumI / numberOfSamples);
 
@@ -186,12 +185,93 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   sumP = 0;
 //--------------------------------------------------------------------------------------
 }
+double EnergyMonitor::calcVrms(unsigned int crossings, unsigned int timeout)
+{
+  #if defined emonTxV3
+  int SupplyVoltage=3300;
+  #else
+  int SupplyVoltage = readVcc();
+  #endif
 
+  unsigned int crossCount = 0;                             //Used to measure number of times threshold is crossed.
+  unsigned int numberOfSamples = 0;                        //This is now incremented
+  //-------------------------------------------------------------------------------------------------------------------------
+  // 1) Waits for the waveform to be close to 'zero' (mid-scale adc) part in sin curve.
+  //-------------------------------------------------------------------------------------------------------------------------
+  unsigned long start = millis();    //millis()-start makes sure it doesnt get stuck in the loop if there is an error.
+  int x= (this->inputPinReader)(inPinV);
+  
+  while(1)                                   //the while loop...
+  {
+     //analogRead(inPinV);                    //using the voltage waveform
+    startV = this->inputADS1015continues();
+
+    if ((startV < (this->SAMPLEBITS *0.55)) && (startV > (this->SAMPLEBITS*0.45))) break;  //check its within range
+    if ((millis()-start)>timeout) break;
+  }
+  //-------------------------------------------------------------------------------------------------------------------------
+  // 2) Main measurement loop
+  //-------------------------------------------------------------------------------------------------------------------------
+  start = millis();
+
+  while ((crossCount < crossings) && ((millis()-start)<timeout))
+  {
+    numberOfSamples++;                       //Count number of times looped.
+    lastFilteredV = filteredV;               //Used for delay/phase compensation
+
+    //-----------------------------------------------------------------------------
+    // A) Read in raw voltage and current samples
+    //-----------------------------------------------------------------------------
+
+    sampleV = this->inputADS1015continues();
+    //-----------------------------------------------------------------------------
+    // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
+    //     then subtract this - signal is now centred on 0 counts.
+    //-----------------------------------------------------------------------------
+    offsetV = offsetV + ((sampleV-offsetV)/SAMPLEBITS);
+    filteredV = sampleV - offsetV;
+
+
+    //-----------------------------------------------------------------------------
+    // C) Root-mean-square method voltage
+    //-----------------------------------------------------------------------------
+    sqV= filteredV * filteredV;                 //1) square voltage values
+    sumV += sqV;                                //2) sum
+
+
+    //-----------------------------------------------------------------------------
+    // G) Find the number of times the voltage has crossed the initial voltage
+    //    - every 2 crosses we will have sampled 1 wavelength
+    //    - so this method allows us to sample an integer number of half wavelengths which increases accuracy
+    //-----------------------------------------------------------------------------
+    lastVCross = checkVCross;
+    if (sampleV > startV) checkVCross = true;
+                     else checkVCross = false;
+    if (numberOfSamples==1) lastVCross = checkVCross;
+
+    if (lastVCross != checkVCross) crossCount++;
+  }
+  //-------------------------------------------------------------------------------------------------------------------------
+  // 3) Post loop calculations
+  //-------------------------------------------------------------------------------------------------------------------------
+  //Calculation of the root of the mean of the voltage and current squared (rms)
+  //Calibration coefficients applied.
+
+  double V_RATIO = VCAL *((SupplyVoltage/1000.0) / (SAMPLEBITS));
+  Vrms = V_RATIO * sqrt(sumV / numberOfSamples);
+
+
+  //Reset accumulators
+  sumV = 0;
+
+  return Vrms;
+//--------------------------------------------------------------------------------------
+}
 //--------------------------------------------------------------------------------------
 double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
 {
 
-  uint start = millis();
+  //uint start = millis();
   #if defined emonTxV3
     int SupplyVoltage=3300;
   #else
@@ -201,6 +281,7 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
   uint16_t x = (this->inputPinReader)(inPinI);
   //(this->inputPinReader)(inPinI);
 #endif
+
   for (unsigned int n = 0; n < Number_of_Samples; n++)
   {
 #ifndef ADS1X15
@@ -208,7 +289,9 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
     //ESP_LOGI(TAG,"TEST %i",sampleI);
 #endif
 #ifdef ADS1X15
-    sampleI = this->inputADS1115continues();//analogRead(inPinI);
+    sampleI = this->inputADS1015continues();
+    //Serial.println(sampleI);
+    //sampleI = (this->inputPinReader)(inPinI);
     //ESP_LOGI(TAG,"%i",sampleI);
 #endif
     // Digital low pass filter extracts the 2.5 V or 1.65 V dc offset,
@@ -233,10 +316,11 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
   sumI = 0;
   //--------------------------------------------------------------------------------------
 
-  uint stop = millis();
+  //uint stop = millis();
+
   return Irms;
 }
-
+/*
 void EnergyMonitor::serialprint()
 {
   Serial.print(realPower);
@@ -251,6 +335,7 @@ void EnergyMonitor::serialprint()
   Serial.println(' ');
   delay(100);
 }
+*/
 
 //thanks to http://hacking.majenko.co.uk/making-accurate-adc-readings-on-arduino
 //and Jérôme who alerted us to http://provideyourown.com/2012/secret-arduino-voltmeter-measure-battery-voltage/
