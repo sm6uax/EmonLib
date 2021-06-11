@@ -97,8 +97,12 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
   while(1)                                   //the while loop...
   {
      //analogRead(inPinV);                    //using the voltage waveform
+#ifdef ADS1015
     sampleV = this->inputADS1015continues();
-
+#endif
+#ifdef ADS1115
+    sampleV = this->inputADS1115continues();
+#endif
     if ((startV < (this->SAMPLEBITS *0.55)) && (startV > (this->SAMPLEBITS*0.45))) break;  //check its within range
     if ((millis()-start)>timeout) break;
   }
@@ -116,9 +120,16 @@ void EnergyMonitor::calcVI(unsigned int crossings, unsigned int timeout)
     // A) Read in raw voltage and current samples
     //-----------------------------------------------------------------------------
     sampleV = (this->inputPinReader)(inPinV); //analogRead(inPinV);                 //Read in raw voltage signal
-    sampleV = this->inputADS1015continues();
+  
     sampleI = (this->inputPinReader)(inPinI); //analogRead(inPinI);                 //Read in raw current signal
+#ifdef ADS1015
+    sampleV = this->inputADS1015continues();
     sampleI = this->inputADS1015continues();
+#endif
+#ifdef ADS1115
+    sampleV = this->inputADS1115continues();
+    sampleI = this->inputADS1115continues();
+#endif
     //-----------------------------------------------------------------------------
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
@@ -204,8 +215,12 @@ double EnergyMonitor::calcVrms(unsigned int crossings, unsigned int timeout)
   while(1)                                   //the while loop...
   {
      //analogRead(inPinV);                    //using the voltage waveform
+#ifdef ADS1015
     startV = this->inputADS1015continues();
-
+#endif
+#ifdef ADS1115
+    startV = this->inputADS1115continues();
+#endif
     if ((startV < (this->SAMPLEBITS *0.55)) && (startV > (this->SAMPLEBITS*0.45))) break;  //check its within range
     if ((millis()-start)>timeout) break;
   }
@@ -222,8 +237,12 @@ double EnergyMonitor::calcVrms(unsigned int crossings, unsigned int timeout)
     //-----------------------------------------------------------------------------
     // A) Read in raw voltage and current samples
     //-----------------------------------------------------------------------------
-
+#ifdef ADS1015
     sampleV = this->inputADS1015continues();
+#endif
+#ifdef ADS1115
+    sampleV = this->inputADS1115continues();
+#endif
     //-----------------------------------------------------------------------------
     // B) Apply digital low pass filters to extract the 2.5 V or 1.65 V dc offset,
     //     then subtract this - signal is now centred on 0 counts.
@@ -288,8 +307,14 @@ double EnergyMonitor::calcIrms(unsigned int Number_of_Samples)
     sampleI = (this->inputPinReader)(inPinI);//analogRead(inPinI);
     //ESP_LOGI(TAG,"TEST %i",sampleI);
 #endif
-#ifdef ADS1X15
+#ifdef ADS1015
     sampleI = this->inputADS1015continues();
+    //Serial.println(sampleI);
+    //sampleI = (this->inputPinReader)(inPinI);
+    //ESP_LOGI(TAG,"%i",sampleI);
+#endif
+#ifdef ADS1115
+    sampleI = this->inputADS1115continues();
     //Serial.println(sampleI);
     //sampleI = (this->inputPinReader)(inPinI);
     //ESP_LOGI(TAG,"%i",sampleI);
